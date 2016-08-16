@@ -1,4 +1,4 @@
-package window
+package goglwindow
 
 import (
 	"github.com/go-gl/glfw/v3.1/glfw"
