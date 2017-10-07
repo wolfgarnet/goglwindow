@@ -18,9 +18,15 @@ func InitializeWindow(width, height int, name string) *glfw.Window {
 	}
 	fmt.Printf("GLFW initialized!\n")
 
+	major, minor, revision := glfw.GetVersion()
+	fmt.Printf("HOLA %v, %v, %v\n", major, minor, revision)
+	if major < 3 {
+		panic("Unsupported OpenGL version")
+	}
+
 	glfw.WindowHint(glfw.Resizable, glfw.False)
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 3)
+	glfw.WindowHint(glfw.ContextVersionMajor, major)
+	glfw.WindowHint(glfw.ContextVersionMinor, minor)
 	window, err := glfw.CreateWindow(width, height, name, nil, nil)
 	if err != nil {
 		panic(err)
@@ -63,6 +69,9 @@ func NewProperties(storeCurser bool) Properties {
 	return Properties{storeCurser, 0,0}
 }
 
+type Receiver interface {
+	Receive() chan Event
+}
 
 type Window struct {
 	sync.RWMutex
@@ -71,36 +80,40 @@ type Window struct {
 	reciever chan Event
 }
 
-func NewWindow2(receiver chan Event) *Window {
-	return NewWindow(1600, 1200, "Test program", receiver)
+func NewWindow2(keyboard, mouse Receiver) *Window {
+	return NewWindow(1600, 1200, "Test program", keyboard, mouse)
 }
 
-func NewWindow(width, height int, name string, receiver chan Event) *Window {
-	return NewWindow2WithProperties(width, height, name, receiver, Properties{true, 0,0})
+func NewWindow(width, height int, name string, keyboard, mouse Receiver) *Window {
+	return NewWindow2WithProperties(width, height, name, Properties{true, 0,0}, keyboard, mouse)
 }
 
-func NewWindow2WithProperties(width, height int, name string, receiver chan Event, props Properties) *Window {
+func NewWindow2WithProperties(width, height int, name string, props Properties, keyboard, mouse Receiver) *Window {
 	window := &Window{
 		Window:InitializeWindow(width, height, name),
 		properties:props,
 	}
 
+	// Mouse buttons
 	window.Window.SetMouseButtonCallback(func(gw *glfw.Window, button glfw.MouseButton, action glfw.Action, mod glfw.ModifierKey) {
-		receiver <- MouseEvent{button, action}
+		mouse.Receive() <- MouseEvent{button, action}
 	})
 
+	// Keyboard keys
 	window.Window.SetKeyCallback(func(gw *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		if action == glfw.Repeat {
 			return
 		}
 
-		receiver <- KeyboardEvent{action, key}
+		keyboard.Receive() <- KeyboardEvent{action, key}
 	})
 
+	// Mouse scroll
 	window.Window.SetScrollCallback(func(gw *glfw.Window, x, y float64) {
-		receiver <- MouseScroll{x, y}
+		mouse.Receive() <- MouseScroll{x, y}
 	})
 
+	// Mouse position
 	window.Window.SetCursorPosCallback(func(gw *glfw.Window, xpos float64, ypos float64) {
 		window.Lock()
 		defer window.Unlock()
@@ -121,7 +134,7 @@ func NewWindow2WithProperties(width, height int, name string, receiver chan Even
 		cm.X = xpos - lastX
 		cm.Y = ypos - lastY
 
-		receiver <- cm
+		mouse.Receive() <- cm
 	})
 
 	return window
